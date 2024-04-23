@@ -1,0 +1,177 @@
+const puppeteer = require('puppeteer');
+const fs = require('fs');
+const { PNG } = require('pngjs');
+const pixelmatch = require('pixelmatch');
+const path = require('path');
+
+(async () => {
+  const browser = await puppeteer.launch({ headless: false });
+  const page = await browser.newPage();
+
+  // Function to create a directory if it doesn't exist
+  function createDirectoryIfNotExists(directoryPath) {
+    if (!fs.existsSync(directoryPath)) {
+      fs.mkdirSync(directoryPath, { recursive: true });
+    }
+  }
+
+  try {
+    // Load the web app's initial page
+    await page.setViewport({ width: 1550, height: 700 });
+    await page.goto("https://viscommerce.com/showroom3d_desktop/", { timeout: 25000 });
+    console.log("Pass✅ : Website loaded");
+
+    await page.waitForSelector("#scene-container");
+    await page.waitForTimeout(1500);
+
+    await page.click("#home_card_close_Desktop");
+    await page.waitForTimeout(1000);
+    console.log("Pass✅ : Welcome screen Closed");
+
+    // Create an array to hold difference images
+    const diffImages = [];
+
+    // Function to capture a screenshot and return its PNG object
+    async function captureScreenshot(page, filename, timeout) {
+      await page.waitForTimeout(timeout);
+      const screenshotBuffer = await page.screenshot();
+      const screenshot = PNG.sync.read(screenshotBuffer);
+      if (filename) {
+        fs.writeFileSync(filename, screenshotBuffer);
+      }
+      return screenshot;
+    }
+
+    // Furniture
+    await page.click("#v-pills-Advanced-tab");
+    await page.click("#Prompt_ui");
+    await page.click("#v-pills-Sample-tab");
+    await page.click("#load_Furniture_Desktop");
+    const initialFurnitureScreenshot = await captureScreenshot(page, 'C:/Users/king/OneDrive/Desktop/p1/pixelmatch/furniture/Furniture-Actual.png', 25000);
+    console.log("Pass✅ : Furniture ss captured");
+
+    // Lighting
+    await page.click("#load_Lighting_Desktop");
+    const initialLightingScreenshot = await captureScreenshot(page, 'C:/Users/king/OneDrive/Desktop/p1/pixelmatch/lighting/Lighting-Actual.png', 45000);
+    console.log("Pass✅ : Lighting ss captured");
+
+    // Accessories
+    await page.click("#load_Accessories_Desktop");
+    await page.click("#select_Desktop");
+    const initialAccessoriesScreenshot = await captureScreenshot(page, 'C:/Users/king/OneDrive/Desktop/p1/pixelmatch/accessories/Accessories-Actual.png', 12000);
+    console.log("Pass✅ : Accessories ss captured");
+
+    // DayLight
+    await page.click("#dayLight_Desktop");
+    const initialDaylightScreenshot = await captureScreenshot(page, 'C:/Users/king/OneDrive/Desktop/p1/pixelmatch/big_change/Daylight-Actual.png', 25000);
+    console.log("Pass✅ : DayLight ss captured");
+
+    // Close the browser
+    await browser.close();
+
+    // Load expected images for each category
+    const expectedFurnitureImage = PNG.sync.read(fs.readFileSync('C:/Users/king/OneDrive/Desktop/p1/pixelmatch/furniture/Furniture-Expected.png'));
+    const expectedLightingImage = PNG.sync.read(fs.readFileSync('C:/Users/king/OneDrive/Desktop/p1/pixelmatch/lighting/Lighting-Expected.png'));
+    const expectedAccessoriesImage = PNG.sync.read(fs.readFileSync('C:/Users/king/OneDrive/Desktop/p1/pixelmatch/accessories/Accessories-Expected.png'));
+    const expectedDaylightImage = PNG.sync.read(fs.readFileSync('C:/Users/king/OneDrive/Desktop/p1/pixelmatch/big_change/Daylight-Expected.png'));
+
+    // Compare the two screenshots for each category using pixelmatch
+    const furnitureDiff = new PNG({ width: initialFurnitureScreenshot.width, height: initialFurnitureScreenshot.height });
+    const numFurnitureDiffPixels = pixelmatch(
+      expectedFurnitureImage.data,
+      initialFurnitureScreenshot.data,
+      furnitureDiff.data,
+      initialFurnitureScreenshot.width,
+      initialFurnitureScreenshot.height,
+      { threshold: 0.1 }
+    );
+    diffImages.push({ name: 'furniture', diff: furnitureDiff });
+
+    const lightingDiff = new PNG({ width: initialLightingScreenshot.width, height: initialLightingScreenshot.height });
+    const numLightingDiffPixels = pixelmatch(
+      expectedLightingImage.data,
+      initialLightingScreenshot.data,
+      lightingDiff.data,
+      initialLightingScreenshot.width,
+      initialLightingScreenshot.height,
+      { threshold: 0.1 }
+    );
+    diffImages.push({ name: 'lighting', diff: lightingDiff });
+
+    const accessoriesDiff = new PNG({ width: initialAccessoriesScreenshot.width, height: initialAccessoriesScreenshot.height });
+    const numAccessoriesDiffPixels = pixelmatch(
+      expectedAccessoriesImage.data,
+      initialAccessoriesScreenshot.data,
+      accessoriesDiff.data,
+      initialAccessoriesScreenshot.width,
+      initialAccessoriesScreenshot.height,
+      { threshold: 0.1 }
+    );
+    diffImages.push({ name: 'accessories', diff: accessoriesDiff });
+
+    const daylightDiff = new PNG({ width: initialDaylightScreenshot.width, height: initialDaylightScreenshot.height });
+    const numDaylightDiffPixels = pixelmatch(
+      expectedDaylightImage.data,
+      initialDaylightScreenshot.data,
+      daylightDiff.data,
+      initialDaylightScreenshot.width,
+      initialDaylightScreenshot.height,
+      { threshold: 0.1 }
+    );
+    diffImages.push({ name: 'daylight', diff: daylightDiff });
+
+    // Create directories for each category if they don't exist
+    function createDirectoryIfNotExists(directoryPath) {
+      if (!fs.existsSync(directoryPath)) {
+        fs.mkdirSync(directoryPath, { recursive: true });
+      }
+    }
+
+    // Save the difference images for each category in their respective folders
+    for (const diffImage of diffImages) {
+      const categoryDirectory = getCategoryDirectory(diffImage.name);
+      const diffImagePath = path.join(categoryDirectory, `desktop-${diffImage.name}-diff.png`);
+      fs.writeFileSync(diffImagePath, PNG.sync.write(diffImage.diff));
+    }
+
+    // Calculate and log the difference percentages
+    const totalFurniturePixels = expectedFurnitureImage.width * expectedFurnitureImage.height;
+    const furnitureDiffPercentage = (numFurnitureDiffPixels / totalFurniturePixels) * 100;
+
+    const totalLightingPixels = expectedLightingImage.width * expectedLightingImage.height;
+    const lightingDiffPercentage = (numLightingDiffPixels / totalLightingPixels) * 100;
+
+    const totalAccessoriesPixels = expectedAccessoriesImage.width * expectedAccessoriesImage.height;
+    const accessoriesDiffPercentage = (numAccessoriesDiffPixels / totalAccessoriesPixels) * 100;
+
+    const totalDaylightPixels = expectedDaylightImage.width * expectedDaylightImage.height;
+    const daylightDiffPercentage = (numDaylightDiffPixels / totalDaylightPixels) * 100;
+
+    console.log(`Furniture Difference Percentage: ${furnitureDiffPercentage.toFixed(2)}%`);
+    console.log(`Lighting Difference Percentage: ${lightingDiffPercentage.toFixed(2)}%`);
+    console.log(`Accessories Difference Percentage: ${accessoriesDiffPercentage.toFixed(2)}%`);
+    console.log(`Daylight Difference Percentage: ${daylightDiffPercentage.toFixed(2)}%`);
+
+
+  } catch (err) {
+    console.log("Fail🚫 :", err.message);
+  } finally {
+    await browser.close();
+  }
+})();
+
+// Function to get the directory path for a category
+function getCategoryDirectory(category) {
+  switch (category) {
+    case 'furniture':
+      return 'C:/Users/king/OneDrive/Desktop/p1/pixelmatch/furniture';
+    case 'lighting':
+      return 'C:/Users/king/OneDrive/Desktop/p1/pixelmatch/lighting';
+    case 'accessories':
+      return 'C:/Users/king/OneDrive/Desktop/p1/pixelmatch/accessories';
+    case 'daylight':
+      return 'C:/Users/king/OneDrive/Desktop/p1/pixelmatch/big_change';
+    default:
+      throw new Error(`Invalid category: ${category}`);
+  }
+}
